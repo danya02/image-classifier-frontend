@@ -16,7 +16,7 @@ pub fn Alert(props: &AlertProps) -> Html {
         html!()  // Yes, this means that dismissed alerts will leak memory and not show up
     } else {
         html! {
-            <div class={classes!("alert", "alert-dismissable", alert_kind)}>
+            <div class={classes!("alert", "alert-dismissible", alert_kind)}>
                 {&props.text}
 
                 <button type="button" class="btn-close" onclick={set_dismissed} />

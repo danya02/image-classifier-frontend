@@ -1,5 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
+use base64::Engine;
 use gloo::timers::callback::Interval;
 use log::{debug, info};
 use reqwest::{multipart::Part, header::HeaderMap};
@@ -15,7 +16,7 @@ const ANALYSIS_URL: &str = "http://10.13.37.252:5000/analyze";
 
 const UPLOAD_URL: &str = "http://10.13.37.252:5000/save";
 
-#[derive(serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ImageAnalysisData {
     #[serde(rename = "overall_class")]
     pub overall_classification: HashMap<String, f64>,
@@ -31,7 +32,7 @@ type RequestId = usize;
 
 pub type AnalysisResponse = HashMap<String, ImageAnalysisData>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub enum ImageAnalysisOutcome {
     WaitingToSend,
     WaitingForResponse(RequestId),
@@ -108,10 +109,32 @@ impl Component for ImageAnalysisView {
             )
         };
 
+        let mut json_labels = HashMap::new();
+        let mut csv_labels = String::new();
+        for img in self.images.iter() {
+            json_labels.insert(img.data.name.clone(), img.outcome.clone());
+            let label = match &img.outcome {
+                ImageAnalysisOutcome::Analyzed(res) => {
+                    let max = res.overall_classification.iter().fold( ("unknown", 0.0f64), |(ok,ov), (nk,nv)| {if nv > &ov {(nk,*nv)} else {(ok,ov)}} ).0;
+                    max.to_string()
+                },
+                _ => "unknown".to_string()
+            };
+            csv_labels.extend(format!("{};{}\n", img.data.name, label).chars());
+        }
+
+        let json_labels = serde_json::to_string(&json_labels).unwrap();
+        let json_labels = format!("data:application/json;base64,{}", base64::engine::general_purpose::STANDARD.encode(json_labels));
+        let csv_labels = format!("data:text/csv;base64,{}", base64::engine::general_purpose::STANDARD.encode(csv_labels));
+
         html! {
         <div>
             <FileUploadBox {on_image} />
             {uploading_state}
+            <div class="row">
+                <a href={json_labels} download="labels.json" class="btn btn-success col mx-2">{"Export all as JSON"}</a>
+                <a href={csv_labels} download="labels.csv" class="btn btn-primary col mx-2">{"Export labels only as CSV"}</a>
+            </div>
             {for self.alerts.clone()}
             <div>
                 {image_rows}
