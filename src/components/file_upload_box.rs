@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use base64::{Engine};
+use base64::Engine;
 use gloo::file::callbacks::FileReader;
 use gloo::file::File;
 use web_sys::{DragEvent, Event, FileList, HtmlInputElement};
 use yew::html::TargetCast;
-use yew::{html, Callback, Component, Context, Html};
 use yew::prelude::*;
+use yew::{html, Callback, Component, Context, Html};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct FileDetails {
     pub name: String,
     pub file_type: String,
@@ -22,7 +22,7 @@ pub enum Msg {
 
 pub struct FileUploadBox {
     readers: HashMap<String, FileReader>,
-    file: Option<FileDetails>,
+    files: Vec<FileDetails>,
 }
 
 #[derive(Properties, PartialEq)]
@@ -38,7 +38,7 @@ impl Component for FileUploadBox {
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
             readers: HashMap::default(),
-            file: None,
+            files: vec![],
         }
     }
 
@@ -52,7 +52,7 @@ impl Component for FileUploadBox {
                 };
                 self.readers.remove(&file_name);
                 ctx.props().on_image.emit(file_details.clone());
-                self.file = Some(file_details);
+                self.files.push(file_details);
                 true
             }
             Msg::Files(files) => {
@@ -80,12 +80,17 @@ impl Component for FileUploadBox {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let preview = if let Some(f) = &self.file {
-            Self::view_file(&f)
+        let preview = if !self.files.is_empty() {
+            let rows = (&self.files).iter().map(|f| {
+                html!(
+                    <p>
+                    {&f.name}
+                    </p>
+                )
+            });
+            html!({for rows})
         } else {
-            html!(
-                <img class="card-img-top" src="https://via.placeholder.com/400" />
-            )
+            html!()
         };
 
         html! {
@@ -109,7 +114,7 @@ impl Component for FileUploadBox {
                     id="file-upload"
                     type="file"
                     accept="image/*"
-                    multiple={false}
+                    multiple={true}
                     onchange={ctx.link().callback(move |e: Event| {
                         let input: HtmlInputElement = e.target_unchecked_into();
                         Self::upload_files(input.files())
@@ -122,19 +127,6 @@ impl Component for FileUploadBox {
 }
 
 impl FileUploadBox {
-    fn view_file(file: &FileDetails) -> Html {
-        html! {
-            <>
-                <img class="card-img-top" src={Self::get_image_url(file)} />
-                <p class="preview-name">{ format!("{}", file.name) }</p>
-            </>
-        }
-    }
-
-    fn get_image_url(file: &FileDetails) -> String {
-        format!("data:{};base64,{}", file.file_type, base64::engine::general_purpose::STANDARD.encode(&file.data))
-    }
-
     fn upload_files(files: Option<FileList>) -> Msg {
         let mut result = Vec::new();
 
