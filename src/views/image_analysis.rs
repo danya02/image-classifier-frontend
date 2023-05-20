@@ -8,8 +8,10 @@ use yew::prelude::*;
 use crate::components::{
     file_upload_box::{FileDetails, FileUploadBox},
     image_analysis_row::AnalysisReportRow,
-    layout::column_layout::IntoColumns,
 };
+
+const ANALYSIS_URL: &str = "http://localhost:5000/analyze";
+//const ANALYSIS_URL: &str = "http://10.13.37.252:5000/analyze";
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct ImageAnalysisData {
@@ -55,7 +57,7 @@ impl Component for ImageAnalysisView {
     fn create(ctx: &Context<Self>) -> Self {
         let _clock_handle = {
             let link = ctx.link().clone();
-            Interval::new(100, move || link.send_message(ImageAnalysisViewMsg::TimerTick))
+            Interval::new(1000, move || link.send_message(ImageAnalysisViewMsg::TimerTick))
         };
         let s = Self {
             requests_sent: 0,
@@ -199,7 +201,7 @@ impl ImageAnalysisView {
 
                 info!("Sending request {request_idx}");
                 let request = client
-                    .post("http://10.13.37.252:5000/analyze")
+                    .post(ANALYSIS_URL)
                     .multipart(body)
                     .send()
                     .await;

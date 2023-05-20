@@ -1,15 +1,10 @@
-use std::{collections::HashMap, rc::Rc};
-
-use gloo::net::http::Request;
-use reqwest::{header::CONTENT_TYPE, multipart::Part};
-use yew::{prelude::*, suspense::use_future};
+use yew::{prelude::*};
 
 use crate::{
-    components::{image_display::ImageDisplayBox, layout::column_layout::IntoColumns},
+    components::{image_display::ImageDisplayBox},
     views::image_analysis::{ImageAnalysisOutcome, ImageAnalysisStatus},
 };
 
-use super::file_upload_box::FileDetails;
 
 #[derive(Properties, PartialEq)]
 pub struct AnalysisReportProps {
@@ -18,12 +13,15 @@ pub struct AnalysisReportProps {
 
 fn placeholder() -> Html {
     html! {
-        <table class="table table-striped">
-            <thead><tr><th>{"Category"}</th><th>{"Confidence"}</th></tr></thead>
-            <tr><th><span class="placeholder col-4 text-bg-secondary"></span></th><td><span class="placeholder col-7 text-bg-secondary"></span></td></tr>
-            <tr><th><span class="placeholder col-5 text-bg-secondary"></span></th><td><span class="placeholder col-7 text-bg-secondary"></span></td></tr>
-            <tr><th><span class="placeholder col-3 text-bg-secondary"></span></th><td><span class="placeholder col-7 text-bg-secondary"></span></td></tr>
-        </table>
+        <div>
+            <h1>{"Predicted label: "}<span class="placeholder col-6 text-success fw-bolder"></span> <div class="spinner-border" role="status"></div></h1>
+            <table class="table table-striped">
+                <thead><tr><th>{"Category"}</th><th>{"Confidence"}</th></tr></thead>
+                <tr><th><span class="placeholder col-4 text-bg-secondary"></span></th><td><span class="placeholder col-7 text-bg-secondary"></span></td></tr>
+                <tr><th><span class="placeholder col-5 text-bg-secondary"></span></th><td><span class="placeholder col-7 text-bg-secondary"></span></td></tr>
+                <tr><th><span class="placeholder col-3 text-bg-secondary"></span></th><td><span class="placeholder col-7 text-bg-secondary"></span></td></tr>
+            </table>
+        </div>
     }
 }
 
@@ -50,20 +48,26 @@ pub fn AnalysisReportRow(props: &AnalysisReportProps) -> Html {
                     v2.partial_cmp(v1).unwrap_or(std::cmp::Ordering::Equal)
                 }); // v2 with v1 because want desc order
                 let (first, others) = items.split_at(1); // first is [0;1) = [0;0].
+                let mut max_prob_class = "???";
                 for (k, v) in first {
                     category_rows
                         .push(html!(<tr class="text-bg-success"><th>{k}</th><td>{v}</td></tr>));
+                    max_prob_class = k;
+                    break;
                 }
                 for (k, v) in others {
                     category_rows.push(html!(<tr class=""><th>{k}</th><td>{v}</td></tr>));
                 }
 
                 html! {
+                    <div>
+                    <h1>{"Predicted label: "}<span class="text-success fw-bolder">{max_prob_class}</span></h1>
                     <table class="table table-striped">
-                        <thead><tr><th>{"Category"}</th><th>{"Confidence"}</th></tr></thead>
-                        <tr><th><span class="placeholder col-4"></span></th><td><span class="placeholder col-6"></span></td></tr>
-                        { category_rows }
-                    </table>
+                            <thead><tr><th>{"Category"}</th><th>{"Confidence"}</th></tr></thead>
+                            <tr><th><span class="placeholder col-4"></span></th><td><span class="placeholder col-6"></span></td></tr>
+                            { category_rows }
+                        </table>
+                    </div>
                 }
             }
             ImageAnalysisOutcome::Error(e) => html! {
@@ -75,7 +79,16 @@ pub fn AnalysisReportRow(props: &AnalysisReportProps) -> Html {
     html! {
         <div class="row">
             <ImageDisplayBox image_data={props.image.data.clone()} class={classes!("col-2")}/>
-            <div class="col-10">{get_analysis_result(&props.image)}</div>
+            <div class="col-8">{get_analysis_result(&props.image)}</div>
+            <div class="col-2">
+                <div class="row row-cols-1">
+                    <button class="btn btn-primary col mb-2">{"..."}</button>
+                    <button class="btn btn-primary col mb-2">{"..."}</button>
+                    <button class="btn btn-primary col mb-2">{"..."}</button>
+                    <button class="btn btn-primary col mb-2">{"..."}</button>
+                    <button class="btn btn-primary col mb-2">{"..."}</button>
+                </div>
+            </div>
         </div>
     }
 }

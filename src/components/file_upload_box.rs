@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-
-use base64::Engine;
 use gloo::file::callbacks::FileReader;
 use gloo::file::File;
 use web_sys::{DragEvent, Event, FileList, HtmlInputElement};
@@ -83,9 +81,6 @@ impl Component for FileUploadBox {
         let preview = if !self.files.is_empty() {
             let rows = (&self.files).iter().map(|f| {
                 html!(
-                    <p>
-                    {&f.name}
-                    </p>
                 )
             });
             html!({for rows})
@@ -94,7 +89,7 @@ impl Component for FileUploadBox {
         };
 
         html! {
-        <div class="card"
+        <div class="card mb-3 text-bg-secondary"
             id="drop-container"
             ondrop={ctx.link().callback(|event: DragEvent| {
                 event.prevent_default();
@@ -110,6 +105,7 @@ impl Component for FileUploadBox {
             { preview }
 
             <div class="card-body">
+                <p>{"Drop or select a file to analyze it"}</p>
                 <input
                     id="file-upload"
                     type="file"
@@ -135,7 +131,8 @@ impl FileUploadBox {
                 .unwrap()
                 .unwrap()
                 .map(|v| web_sys::File::from(v.unwrap()))
-                .map(File::from);
+                .map(File::from)
+                .filter(|x| x.raw_mime_type().starts_with("image/"));
             result.extend(files);
         }
         Msg::Files(result)

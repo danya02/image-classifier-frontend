@@ -8,7 +8,7 @@ CORS(app)
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    time.sleep(200)
+    time.sleep(5)
     data = {}
     for file in request.files.getlist('f[]'):
         if file:
