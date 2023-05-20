@@ -1,14 +1,15 @@
-use yew::{prelude::*};
+use yew::prelude::*;
 
 use crate::{
-    components::{image_display::ImageDisplayBox},
+    components::image_display::{get_image_url, ImageDisplayBox},
     views::image_analysis::{ImageAnalysisOutcome, ImageAnalysisStatus},
 };
-
 
 #[derive(Properties, PartialEq)]
 pub struct AnalysisReportProps {
     pub image: ImageAnalysisStatus,
+    pub on_delete: Callback<MouseEvent>,
+    pub on_upload: Callback<MouseEvent>,
 }
 
 fn placeholder() -> Html {
@@ -82,11 +83,9 @@ pub fn AnalysisReportRow(props: &AnalysisReportProps) -> Html {
             <div class="col-8">{get_analysis_result(&props.image)}</div>
             <div class="col-2">
                 <div class="row row-cols-1">
-                    <button class="btn btn-primary col mb-2">{"..."}</button>
-                    <button class="btn btn-primary col mb-2">{"..."}</button>
-                    <button class="btn btn-primary col mb-2">{"..."}</button>
-                    <button class="btn btn-primary col mb-2">{"..."}</button>
-                    <button class="btn btn-primary col mb-2">{"..."}</button>
+                    <button class="btn btn-success col mb-2" onclick={&props.on_upload}>{"Upload to Archive"}</button>
+                    <button class="btn btn-danger col mb-2" onclick={&props.on_delete}>{"Delete"}</button>
+                    <a class="btn btn-primary col mb-2" href={get_image_url(&*props.image.data)} download={props.image.data.name.clone()}>{"Download as file"}</a>
                 </div>
             </div>
         </div>

@@ -28,7 +28,7 @@ fn view_file(props: &ImageDisplayProps) -> Html {
     }
 }
 
-fn get_image_url(file: &FileDetails) -> String {
+pub fn get_image_url(file: &FileDetails) -> String {
     format!(
         "data:{};base64,{}",
         file.file_type,

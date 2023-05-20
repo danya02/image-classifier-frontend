@@ -1,5 +1,6 @@
 #![feature(option_result_contains)]
 
+use views::search::Search;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
@@ -15,6 +16,8 @@ mod views;
 pub enum Route {
     #[at("/")]
     Home,
+    #[at("/search")]
+    Search,
     #[not_found]
     #[at("/404")]
     NotFound,
@@ -28,6 +31,7 @@ fn switch(routes: Route) -> Html {
         Route::NotFound => {
             html! { <NotFound /> }
         }
+        Route::Search => html!(<Search />),
     }
 }
 

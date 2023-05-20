@@ -30,6 +30,7 @@ pub fn Nav() -> Html {
             <div class="navbar-nav">
             {link_to(Route::Home, "Home")}
             {link_to(Route::NotFound, "NotHome")}
+            {link_to(Route::Search, "Search")}
 
             </div>
           </div>

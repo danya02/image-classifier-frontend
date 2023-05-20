@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use gloo::file::callbacks::FileReader;
 use gloo::file::File;
+use std::collections::HashMap;
 use web_sys::{DragEvent, Event, FileList, HtmlInputElement};
 use yew::html::TargetCast;
 use yew::prelude::*;
@@ -79,10 +79,7 @@ impl Component for FileUploadBox {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let preview = if !self.files.is_empty() {
-            let rows = (&self.files).iter().map(|f| {
-                html!(
-                )
-            });
+            let rows = (&self.files).iter().map(|_f| html!());
             html!({for rows})
         } else {
             html!()

@@ -2,20 +2,22 @@ use std::{collections::HashMap, rc::Rc};
 
 use gloo::timers::callback::Interval;
 use log::{debug, info};
-use reqwest::multipart::Part;
+use reqwest::{multipart::Part, header::HeaderMap};
 use yew::prelude::*;
 
 use crate::components::{
     file_upload_box::{FileDetails, FileUploadBox},
-    image_analysis_row::AnalysisReportRow,
+    image_analysis_row::AnalysisReportRow, alert::Alert,
 };
 
-const ANALYSIS_URL: &str = "http://localhost:5000/analyze";
-//const ANALYSIS_URL: &str = "http://10.13.37.252:5000/analyze";
+//const ANALYSIS_URL: &str = "http://localhost:5000/analyze";
+const ANALYSIS_URL: &str = "http://10.13.37.252:5000/analyze";
+
+const UPLOAD_URL: &str = "http://10.13.37.252:5000/save";
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct ImageAnalysisData {
-    #[serde(rename="overall_class")]
+    #[serde(rename = "overall_class")]
     pub overall_classification: HashMap<String, f64>,
 }
 
@@ -41,12 +43,17 @@ pub struct ImageAnalysisView {
     requests_sent: usize,
     images: Vec<ImageAnalysisStatus>,
     _clock_handle: Interval,
+    uploading: Vec<Rc<FileDetails>>,
+    alerts: Vec<Html>,
 }
 
 pub enum ImageAnalysisViewMsg {
     NewImageUploaded(FileDetails),
     TimerTick,
     AnalysisRequestCompleted(usize, Result<HashMap<String, ImageAnalysisData>, String>),
+    DeleteImageRow(ImageAnalysisStatus),
+    StartUpload(Rc<FileDetails>),
+    FinishUpload(Rc<FileDetails>, Result<(), String>),
 }
 
 impl Component for ImageAnalysisView {
@@ -57,29 +64,55 @@ impl Component for ImageAnalysisView {
     fn create(ctx: &Context<Self>) -> Self {
         let _clock_handle = {
             let link = ctx.link().clone();
-            Interval::new(1000, move || link.send_message(ImageAnalysisViewMsg::TimerTick))
+            Interval::new(1000, move || {
+                link.send_message(ImageAnalysisViewMsg::TimerTick)
+            })
         };
         let s = Self {
             requests_sent: 0,
             images: vec![],
             _clock_handle,
+            uploading: vec![],
+            alerts: vec![],
         };
-        
+
         s
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let mut image_rows = vec![];
         for image in self.images.iter() {
+            let img = image.clone();
+            let on_delete = ctx
+                .link()
+                .callback(move |_i| ImageAnalysisViewMsg::DeleteImageRow(img.clone()));
+            let img = image.clone();
+            let on_upload = ctx
+                .link()
+                .callback(move |_i| ImageAnalysisViewMsg::StartUpload(img.clone().data));
+
             image_rows.push(html!(
-                <AnalysisReportRow image={image.clone()} />
+                <AnalysisReportRow image={image.clone()} {on_delete} {on_upload}/>
             ));
         }
 
-        let on_image = ctx.link().callback(|i| ImageAnalysisViewMsg::NewImageUploaded(i));
+        let on_image = ctx
+            .link()
+            .callback(|i| ImageAnalysisViewMsg::NewImageUploaded(i));
+
+        let uploading_state = if self.uploading.is_empty() {
+            html!()
+        } else {
+            html!(
+                <p>{format!("Uploading {} images...", self.uploading.len())}<div class="spinner-border" role="status"></div></p>
+            )
+        };
+
         html! {
         <div>
             <FileUploadBox {on_image} />
+            {uploading_state}
+            {for self.alerts.clone()}
             <div>
                 {image_rows}
             </div>
@@ -91,13 +124,58 @@ impl Component for ImageAnalysisView {
             ImageAnalysisViewMsg::NewImageUploaded(img) => {
                 self.on_image(img);
                 true
-            },
+            }
             ImageAnalysisViewMsg::TimerTick => self.collect_pending(ctx),
             ImageAnalysisViewMsg::AnalysisRequestCompleted(idx, data) => {
                 self.analysis_request_completed(idx, data);
                 true
-            },
+            }
+            ImageAnalysisViewMsg::DeleteImageRow(img) => {
+                self.images.retain(|f| f != &img);
+                true
+            }
+            ImageAnalysisViewMsg::StartUpload(imgdata) => {
+                self.uploading.push(imgdata.clone());
+                ctx.link().send_future(async move {
+                    let client = reqwest::Client::new();
+                    let body = reqwest::multipart::Form::new().part(
+                        "f[]",
+                        Part::bytes((&imgdata).data.clone())
+                            .file_name((&imgdata).name.clone())
+                            .mime_str(&imgdata.file_type)
+                            .unwrap(),
+                    ).part("tags", Part::text("test").file_name(""));
 
+                    let request = client.post(UPLOAD_URL).multipart(body).send().await;
+
+                    let result = match request {
+                        Ok(resp) => match resp.error_for_status() {
+                            Ok(_resp) => Ok(()),
+                            Err(why) => Err(format!("Error status in upload: {why}")),
+                        },
+                        Err(why) => Err(format!("Error sending upload request: {why}")),
+                    };
+
+                    ImageAnalysisViewMsg::FinishUpload(imgdata, result)
+                });
+                true
+            }
+            ImageAnalysisViewMsg::FinishUpload(imgdata, res) => {
+                self.uploading.retain(|x| x != &imgdata);
+                match res {
+                    Ok(_) => {
+                        self.alerts.push(html!(
+                            <Alert style="success" text={format!("Successfully uploaded {}!", imgdata.name)} />
+                        ))
+                    },
+                    Err(why) => {
+                        self.alerts.push(html!(
+                            <Alert style="danger" text={format!("Failed to upload {}: {why}", imgdata.name)} />
+                        ))
+                    },
+                };
+                true
+            },
         }
     }
 }
@@ -172,7 +250,6 @@ impl ImageAnalysisView {
             return false;
         }
 
-
         let mut to_send: HashMap<usize, Vec<ImageAnalysisStatus>> = HashMap::new();
         for img in self.images.iter() {
             if let ImageAnalysisOutcome::WaitingForResponse(i) = img.outcome {
@@ -200,11 +277,7 @@ impl ImageAnalysisView {
                 }
 
                 info!("Sending request {request_idx}");
-                let request = client
-                    .post(ANALYSIS_URL)
-                    .multipart(body)
-                    .send()
-                    .await;
+                let request = client.post(ANALYSIS_URL).multipart(body).send().await;
                 let request_outcome = if let Ok(resp) = request {
                     let data: Result<AnalysisResponse, _> = resp.json().await;
                     if let Ok(data) = data {
