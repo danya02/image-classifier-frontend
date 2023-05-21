@@ -3,18 +3,22 @@ use std::{collections::HashMap, rc::Rc};
 use base64::Engine;
 use gloo::timers::callback::Interval;
 use log::{debug, info};
-use reqwest::{multipart::Part, header::HeaderMap};
+use reqwest::multipart::Part;
 use yew::prelude::*;
 
 use crate::components::{
+    alert::Alert,
     file_upload_box::{FileDetails, FileUploadBox},
-    image_analysis_row::AnalysisReportRow, alert::Alert,
+    image_analysis_row::AnalysisReportRow,
 };
 
-//const ANALYSIS_URL: &str = "http://localhost:5000/analyze";
-const ANALYSIS_URL: &str = "http://10.13.37.252:5000/analyze";
+use crate::root_url;
 
-const UPLOAD_URL: &str = "http://10.13.37.252:5000/save";
+//const ANALYSIS_URL: &str = "http://localhost:5000/analyze";
+const ANALYSIS_URL: &str = concat!(root_url!(), "/analyze");
+
+
+const UPLOAD_URL: &str = concat!(root_url!(), "/save");
 
 #[derive(serde::Deserialize, Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ImageAnalysisData {
@@ -34,9 +38,13 @@ pub type AnalysisResponse = HashMap<String, ImageAnalysisData>;
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub enum ImageAnalysisOutcome {
+    #[serde(rename = "waiting_to_send")]
     WaitingToSend,
+    #[serde(rename = "waiting_for_response")]
     WaitingForResponse(RequestId),
+    #[serde(rename = "analyzed")]
     Analyzed(ImageAnalysisData),
+    #[serde(rename = "error")]
     Error(String),
 }
 
@@ -48,12 +56,14 @@ pub struct ImageAnalysisView {
     alerts: Vec<Html>,
 }
 
+#[derive(Clone)]
 pub enum ImageAnalysisViewMsg {
     NewImageUploaded(FileDetails),
     TimerTick,
     AnalysisRequestCompleted(usize, Result<HashMap<String, ImageAnalysisData>, String>),
     DeleteImageRow(ImageAnalysisStatus),
-    StartUpload(Rc<FileDetails>),
+    StartUploadAll,
+    StartUpload(Rc<FileDetails>, ImageAnalysisOutcome),
     FinishUpload(Rc<FileDetails>, Result<(), String>),
 }
 
@@ -88,9 +98,9 @@ impl Component for ImageAnalysisView {
                 .link()
                 .callback(move |_i| ImageAnalysisViewMsg::DeleteImageRow(img.clone()));
             let img = image.clone();
-            let on_upload = ctx
-                .link()
-                .callback(move |_i| ImageAnalysisViewMsg::StartUpload(img.clone().data));
+            let on_upload = ctx.link().callback(move |_i| {
+                ImageAnalysisViewMsg::StartUpload(img.clone().data, img.clone().outcome)
+            });
 
             image_rows.push(html!(
                 <AnalysisReportRow image={image.clone()} {on_delete} {on_upload}/>
@@ -105,35 +115,54 @@ impl Component for ImageAnalysisView {
             html!()
         } else {
             html!(
-                <p>{format!("Uploading {} images...", self.uploading.len())}<div class="spinner-border" role="status"></div></p>
+                <p class="mb-3">{format!("Uploading {} images...", self.uploading.len())}<div class="spinner-border" role="status"></div></p>
             )
         };
 
         let mut json_labels = HashMap::new();
-        let mut csv_labels = String::new();
+        let mut csv_labels = String::from("name;class\n");
         for img in self.images.iter() {
             json_labels.insert(img.data.name.clone(), img.outcome.clone());
             let label = match &img.outcome {
                 ImageAnalysisOutcome::Analyzed(res) => {
-                    let max = res.overall_classification.iter().fold( ("unknown", 0.0f64), |(ok,ov), (nk,nv)| {if nv > &ov {(nk,*nv)} else {(ok,ov)}} ).0;
+                    let max = res
+                        .overall_classification
+                        .iter()
+                        .fold(("unknown", 0.0f64), |(ok, ov), (nk, nv)| {
+                            if nv > &ov {
+                                (nk, *nv)
+                            } else {
+                                (ok, ov)
+                            }
+                        })
+                        .0;
                     max.to_string()
-                },
-                _ => "unknown".to_string()
+                }
+                _ => "unknown".to_string(),
             };
             csv_labels.extend(format!("{};{}\n", img.data.name, label).chars());
         }
 
         let json_labels = serde_json::to_string(&json_labels).unwrap();
-        let json_labels = format!("data:application/json;base64,{}", base64::engine::general_purpose::STANDARD.encode(json_labels));
-        let csv_labels = format!("data:text/csv;base64,{}", base64::engine::general_purpose::STANDARD.encode(csv_labels));
+        let json_labels = format!(
+            "data:application/json;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(json_labels)
+        );
+        let csv_labels = format!(
+            "data:text/csv;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(csv_labels)
+        );
 
         html! {
         <div>
             <FileUploadBox {on_image} />
             {uploading_state}
-            <div class="row">
+            <div class="row mb-3">
                 <a href={json_labels} download="labels.json" class="btn btn-success col mx-2">{"Export all as JSON"}</a>
                 <a href={csv_labels} download="labels.csv" class="btn btn-primary col mx-2">{"Export labels only as CSV"}</a>
+            </div>
+            <div class="row mb-3">
+                <button class="btn btn-warning col mx-2" onclick={ctx.link().callback(|_| ImageAnalysisViewMsg::StartUploadAll)}>{"Upload all to archive"}</button>
             </div>
             {for self.alerts.clone()}
             <div>
@@ -157,17 +186,39 @@ impl Component for ImageAnalysisView {
                 self.images.retain(|f| f != &img);
                 true
             }
-            ImageAnalysisViewMsg::StartUpload(imgdata) => {
+            ImageAnalysisViewMsg::StartUpload(imgdata, imgoutcome) => {
                 self.uploading.push(imgdata.clone());
+                let max_tag = if let ImageAnalysisOutcome::Analyzed(res) = &imgoutcome {
+                    res.overall_classification
+                        .iter()
+                        .fold(("unknown", 0.0f64), |(ok, ov), (nk, nv)| {
+                            if nv > &ov {
+                                (nk, *nv)
+                            } else {
+                                (ok, ov)
+                            }
+                        })
+                        .0
+                        .to_string()
+                } else {
+                    "unknown_tag".to_string()
+                };
+
                 ctx.link().send_future(async move {
                     let client = reqwest::Client::new();
-                    let body = reqwest::multipart::Form::new().part(
-                        "f[]",
-                        Part::bytes((&imgdata).data.clone())
-                            .file_name((&imgdata).name.clone())
-                            .mime_str(&imgdata.file_type)
-                            .unwrap(),
-                    ).part("tags", Part::text("test").file_name(""));
+                    let body = reqwest::multipart::Form::new()
+                        .part(
+                            "f[]",
+                            Part::bytes((&imgdata).data.clone())
+                                .file_name((&imgdata).name.clone())
+                                .mime_str(&imgdata.file_type)
+                                .unwrap(),
+                        )
+                        .part("tags", Part::text(max_tag).file_name(""))
+                        .part(
+                            "analysis",
+                            Part::text(serde_json::to_string(&imgoutcome).unwrap()),
+                        );
 
                     let request = client.post(UPLOAD_URL).multipart(body).send().await;
 
@@ -199,6 +250,12 @@ impl Component for ImageAnalysisView {
                 };
                 true
             },
+            ImageAnalysisViewMsg::StartUploadAll => {
+                info!("Uploading all!!");
+                let msgs: Vec<ImageAnalysisViewMsg> = self.images.iter().map(|i: &ImageAnalysisStatus| ImageAnalysisViewMsg::StartUpload(i.data.clone(), i.outcome.clone())).collect();
+                ctx.link().send_message_batch(msgs);
+                false
+            }
         }
     }
 }
@@ -246,7 +303,7 @@ impl ImageAnalysisView {
     fn collect_pending(&mut self, ctx: &Context<Self>) -> bool {
         // Collect all images waiting to be sent, then split that into groups of 5.
         let mut request_idxs_to_send = vec![];
-        let chunk_size = 5;
+        let chunk_size = 1;
 
         {
             let mut to_send = vec![];

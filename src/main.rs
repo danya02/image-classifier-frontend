@@ -12,6 +12,15 @@ use crate::views::not_found::NotFound;
 mod components;
 mod views;
 
+
+macro_rules! root_url {
+    () => {
+        "http://10.13.37.252:5000"
+    };
+}
+
+pub(crate) use root_url;
+
 #[derive(Routable, PartialEq, Eq, Clone, Debug)]
 pub enum Route {
     #[at("/")]

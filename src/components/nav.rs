@@ -29,7 +29,6 @@ pub fn Nav() -> Html {
           <div class="collapse navbar-collapse" id="navbarNav">
             <div class="navbar-nav">
             {link_to(Route::Home, "Home")}
-            {link_to(Route::NotFound, "NotHome")}
             {link_to(Route::Search, "Search")}
 
             </div>

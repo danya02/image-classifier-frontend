@@ -65,7 +65,6 @@ pub fn AnalysisReportRow(props: &AnalysisReportProps) -> Html {
                     <h1>{"Predicted label: "}<span class="text-success fw-bolder">{max_prob_class}</span></h1>
                     <table class="table table-striped">
                             <thead><tr><th>{"Category"}</th><th>{"Confidence"}</th></tr></thead>
-                            <tr><th><span class="placeholder col-4"></span></th><td><span class="placeholder col-6"></span></td></tr>
                             { category_rows }
                         </table>
                     </div>

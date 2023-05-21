@@ -13,7 +13,7 @@ pub fn Alert(props: &AlertProps) -> Html {
     let is_dismissedc = is_dismissed.clone();
     let set_dismissed = Callback::from(move |_| is_dismissedc.set(true));
     if *is_dismissed {
-        html!()  // Yes, this means that dismissed alerts will leak memory and not show up
+        html!() // Yes, this means that dismissed alerts will leak memory and not show up
     } else {
         html! {
             <div class={classes!("alert", "alert-dismissible", alert_kind)}>
